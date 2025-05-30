@@ -3,19 +3,11 @@ import pandas as pd
 import numpy as np
 import json
 from datetime import date
-from Observability_Stress_Module import run_full_observability_stress_test, simulate_greeks
+from Observability_Stress_Module import run_full_observability_stress_test, simulate_greeks, ir_delta_stress_test, vol_risk_stress_test, generate_trade_pv_and_risk_pvs, ois_curve_map
 
 # --- Initialize Session State ---
 if "workflow_step" not in st.session_state:
     st.session_state.workflow_step = 0
-
-# --- OIS Curve Mapping ---
-ois_curve_map = {
-    "USD": "USD.OIS",
-    "EUR": "EUR.OIS",
-    "GBP": "GBP.OIS",
-    "JPY": "JPY.OIS"
-}
 
 # --- Load Observability Grids ---
 ir_grid = pd.read_csv("ir_delta_observability_grid.csv")
@@ -30,7 +22,7 @@ st.set_page_config(page_title="Swaption - IFRS13 Classification", layout="wide")
 st.title("Swaption - IFRS13 Observability Classification Orchestrator")
 
 # --- Stepper UI ---
-step_labels = ["1. Model Prediction", "2. Simulate Greeks", "3. Stress Test", "4. Explain Rationale"]
+step_labels = ["1. Model Prediction", "2. Simulate Risk Components", "3. Observability Stress Test", "4. Explain Rationale"]
 step_html = '<div class="stepper">'
 for i, label in enumerate(step_labels):
     if st.session_state.workflow_step == i + 1:
@@ -82,15 +74,15 @@ st.markdown(f"""
 {step_html}
 """, unsafe_allow_html=True)
 
-# --- Custom Progress Bar ---
-def render_custom_progress(percent):
-    st.markdown(f"""
-    <div style="background-color: #e0e0e0; border-radius: 20px; height: 24px; width: 100%; margin-top: 10px; margin-bottom: 25px;">
-        <div style="background-color: #0d6efd; width: {percent}%; height: 100%; border-radius: 20px; text-align: center; color: white; line-height: 24px;">
-            {percent}%
-        </div>
+# --- Substepper ---
+def render_substepper(active="3a"):
+    html = f"""
+    <div class="substepper">
+        <div class="substep {'active' if active == '3a' else ''}">3a. IR Delta Stress</div>
+        <div class="substep {'active' if active == '3b' else ''}">3b. Volatility Stress</div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 # --- Sidebar Inputs ---
 st.sidebar.header("Swaption Trade Inputs")
@@ -98,14 +90,12 @@ product_type = st.sidebar.selectbox("Product Type", ["IR Swaption", "Bond", "Cap
 notional = st.sidebar.number_input("Notional", min_value=1_000_000, step=1_000_000, value=10_000_000)
 currency = st.sidebar.selectbox("Currency", ["USD", "EUR", "GBP", "JPY"])
 strike = st.sidebar.slider("Strike (%)", 0.0, 10.0, 2.5, 0.1)
-
 expiry_tenor = st.sidebar.selectbox("Expiry Tenor (Y)", [2, 3, 5])
 expiry_date = date.today().replace(year=date.today().year + expiry_tenor)
-st.sidebar.markdown(f"📅 **Expiry Date**: {expiry_date.strftime('%d-%b-%Y')}")
-
+st.sidebar.markdown(f"\U0001F4C5 **Expiry Date**: {expiry_date.strftime('%d-%b-%Y')}")
 maturity_tenor = st.sidebar.selectbox("Maturity Tenor (Y)", [5, 10, 15, 20, 30])
 maturity_date = date.today().replace(year=date.today().year + maturity_tenor)
-st.sidebar.markdown(f"📅 **Maturity Date**: {maturity_date.strftime('%d-%b-%Y')}")
+st.sidebar.markdown(f"\U0001F4C5 **Maturity Date**: {maturity_date.strftime('%d-%b-%Y')}")
 
 # --- Trade Dictionary ---
 trade = {
@@ -124,64 +114,80 @@ def mock_model_prediction(trade):
     return "Level 3"
 
 # --- Workflow Execution ---
-if st.button("Run Full IFRS 13 Classification Workflow"):
+if st.sidebar.button(" Run IFRS 13 Classification Workflow"):
 
     # Step 1 - Prediction
     st.session_state.workflow_step = 1
     st.subheader("1. Machine Learning Model Prediction")
-    # Trade JSON
-    st.markdown("### 📦 Trade JSON (Input to ML Model)")
+    st.markdown("### \U0001F4E6 Trade JSON (Input to ML Model)")
     st.code(json.dumps(trade, indent=2), language='json')
     model_pred = mock_model_prediction(trade)
     st.session_state["ifrs13_level"] = model_pred
     st.success(f"Predicted IFRS13 Level: {model_pred}")
-    render_custom_progress(25)
-    # Display in sidebar immediately after prediction
-    level_html = f"""<div style='
-        background-color:#d4edda;
-        color:#155724;
-        padding:10px;
-        border-left:5px solid #28a745;
-        border-radius:5px;
-        margin-top:20px;
-        font-weight:bold'>
-        IFRS13 Level:<br>{model_pred}
-    </div>"""
+    #render_custom_progress(25)
+    level_html = f"""<div style='background-color:#d4edda;color:#155724;padding:10px;border-left:5px solid #28a745;border-radius:5px;margin-top:20px;font-weight:bold'>IFRS13 Level:<br>{model_pred}</div>"""
     st.sidebar.markdown(level_html, unsafe_allow_html=True)
-
-   
 
     # Step 2 - Greeks Simulation
     st.session_state.workflow_step = 2
-    st.subheader("2. Simulating Risk Factors")
+    st.subheader("2. Simulate Risk Components")
     greeks = simulate_greeks(trade)
     st.json(greeks)
-    render_custom_progress(50)
+    #render_custom_progress(50)
 
     # Step 3 - Stress Test
     st.session_state.workflow_step = 3
-    st.subheader("3. Observability-Based Stress Test")
-    stressed, report, messages = run_full_observability_stress_test(trade, greeks, ir_grid, vol_grid, ois_curve_map)
+    #render_custom_progress(75)
 
-    report_df = pd.DataFrame(report).T
-    report_df.index.name = "Risk Factor"
-    st.markdown("### 🔍 Observability Report")
-    st.dataframe(report_df)
+    if "trade_pv" not in trade:
+        trade["trade_pv"], generated_pvs = generate_trade_pv_and_risk_pvs(greeks)
+        greeks.update(generated_pvs)
 
-    st.markdown("### 📊 Summary Metrics")
-    st.metric("Total Trade PV", f"{stressed['Total Trade PV']:,.2f}")
-    st.metric("Total Stress PV from Unobservable Risks", f"{stressed['Total Stress PV']:,.2f}")
+    st.subheader("3a. IR Delta Observability-Based Stress Test")
+    ir_stressed, ir_report, ir_stress_pv, ir_msgs = ir_delta_stress_test(trade, greeks, ir_grid, ois_curve_map)
+    ir_report_df = pd.DataFrame(ir_report).T
+    ir_report_df.index.name = "IR Risk Factor"
+    st.markdown("#### \U0001F4C9 IR Delta Observability Report")
+    st.dataframe(ir_report_df)
+    for msg in ir_msgs:
+            st.markdown(f"""
+            <div style='background-color:#fff3cd; color:#856404; padding:10px; border-left:5px solid #ffeeba; border-radius:5px; margin-bottom:5px;'>
+            {msg}
+            </div>
+            """, unsafe_allow_html=True)
 
-    if stressed["Total Stress PV"] > 0.1 * stressed["Total Trade PV"]:
-        st.error("🔴 Stress impact exceeds 10% of Trade PV → Level 3")
+    st.subheader("3b. Volatility Observability-Based Stress Test")
+    vol_stressed, vol_report, vol_stress_pv, vol_msgs = vol_risk_stress_test(trade, greeks, vol_grid)
+    vol_report_df = pd.DataFrame(vol_report).T
+    vol_report_df.index.name = "Volatility Risk Factor"
+    st.markdown("#### \U0001F4C9 Volatility Observability Report")
+    st.dataframe(vol_report_df)
+    for msg in vol_msgs:
+             st.markdown(f"""
+            <div style='background-color:#fff3cd; color:#856404; padding:10px; border-left:5px solid #ffeeba; border-radius:5px; margin-bottom:5px;'>
+            {msg}
+            </div>
+            """, unsafe_allow_html=True)
+             
+    total_stress_pv = ir_stress_pv + vol_stress_pv
+    final_level = "Level 3" if total_stress_pv > 0.1 * trade["trade_pv"] else "Level 2"
+    st.markdown("### \U0001F4C9 Combined Summary Metrics")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total Trade PV", f"{trade['trade_pv']:,.2f}")
+    with col2:
+        st.metric("Unobservable PV from IR Delta", f"{ir_stress_pv:,.2f}")
+        st.metric("Unobservable PV from Volatility", f"{vol_stress_pv:,.2f}")
+        st.metric("Total Stress PV from Unobservable Risks", f"{total_stress_pv:,.2f}")
+
+
+    if final_level == "Level 3":
+        st.error("\U0001F534 PV impact from unobservable Stress factors exceeds 10% of Trade PV → Level 3")
     else:
-        st.success("🟢 Stress impact within 10% of Trade PV → Level 2")
+        st.success("\U0001F7E2 PV impact from unobservable Stress factors within 10% of Trade PV → Level 2")
 
-    render_custom_progress(75)
+    # Step 4 - Rationale
     st.session_state.workflow_step = 4
-
-# --- Final Step - Rationale (Always visible) ---
-st.subheader("4. Explain Rationale")
-st.info("🔍 Rationale explanation will be generated via Azure AI Foundry (gpt-4o API integration coming soon).")
-if st.session_state.workflow_step == 4:
-    render_custom_progress(100)
+    st.subheader("4. Explain Rationale")
+    st.info("\U0001F50D Rationale explanation will be generated via Azure AI Foundry (gpt-4o API integration coming soon).")
+    #render_custom_progress(100)

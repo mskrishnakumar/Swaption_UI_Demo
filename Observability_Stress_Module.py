@@ -1,15 +1,17 @@
 import numpy as np
 import pandas as pd
 
+# --- OIS Curve Mapping ---
+ois_curve_map = {
+    "USD": "USD.OIS",
+    "EUR": "EUR.OIS",
+    "GBP": "GBP.OIS",
+    "JPY": "JPY.OIS"
+}
+
 # Generate Risk Factors
 def simulate_greeks(trade):
-# --- OIS Curve Mapping ---
-    ois_curve_map = {
-        "USD": "USD.OIS",
-        "EUR": "EUR.OIS",
-        "GBP": "GBP.OIS",
-        "JPY": "JPY.OIS"
-    }
+
     base = trade["notional"] / 1_000_000
     tenor_factor = trade["maturity_tenor"] / 10
     vol_factor = 0.01 * np.random.uniform(0.8, 1.2)
@@ -61,12 +63,12 @@ def ir_delta_stress_test(trade, greeks, ir_grid, ois_curve_map):
         observable = not grid_row.empty
         if observable:
             stress_factor = 0.0
-            stressed_pv = base_pv
+            stressed_pv = base_pv * stress_factor
         else:
             fallback_row = ir_grid[ir_grid["Curve ID"] == curve_id]
             stress_factor = fallback_row["Stress Factor"].values[0] if not fallback_row.empty else 1.0
             stressed_pv = base_pv * stress_factor
-            messages.append(f"⚠️ {col_name} for {curve_id} marked UNOBSERVABLE")
+            messages.append(f"⚠️ {col_name} for {curve_id} risk considered Unobservable")
             total_stress_pv += abs(stressed_pv)
 
         stressed[col_name] = stressed_pv
@@ -99,7 +101,7 @@ def vol_risk_stress_test(trade, greeks, vol_grid):
         observable = not grid_row.empty
         if observable:
             stress_factor = 0.0
-            stressed_pv = base_pv
+            stressed_pv = base_pv * stress_factor
         else:
             fallback_row = vol_grid[
                 (vol_grid["Risk Type"] == risk) &
@@ -107,7 +109,7 @@ def vol_risk_stress_test(trade, greeks, vol_grid):
             ]
             stress_factor = fallback_row["Stress Factor"].values[0] if not fallback_row.empty else 1.0
             stressed_pv = base_pv * stress_factor
-            messages.append(f"⚠️ {risk} marked UNOBSERVABLE")
+            messages.append(f"⚠️ {risk} risk considered Unobservable")
             total_stress_pv += abs(stressed_pv)
 
         stressed[risk] = stressed_pv

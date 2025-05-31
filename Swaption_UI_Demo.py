@@ -4,13 +4,25 @@ import numpy as np
 import json
 from datetime import date
 from openai import AzureOpenAI
-from Observability_Stress_Module import run_full_observability_stress_test, simulate_greeks, ir_delta_stress_test, vol_risk_stress_test, generate_trade_pv_and_risk_pvs, ois_curve_map
-from workflow_styles import get_workflow_css, get_workflow_html_ml, get_workflow_html_rf, get_workflow_html_rat
+from Observability_Stress_Module import (
+    run_full_observability_stress_test,
+    simulate_greeks,
+    ir_delta_stress_test,
+    vol_risk_stress_test,
+    generate_trade_pv_and_risk_pvs,
+    ois_curve_map
+)
+from workflow_styles import (
+    get_workflow_css,
+    get_workflow_html_ml,
+    get_workflow_html_rf,
+    get_workflow_html_rat
+)
 
 # --- Initialize Session State ---
-for key in ["ml_step", "rf_step", "rat_step"]:
+for key in ["ml_done", "rf_done", "rat_done"]:
     if key not in st.session_state:
-        st.session_state[key] = 0
+        st.session_state[key] = False
 
 # --- Load Observability Grids ---
 ir_grid = pd.read_csv("ir_delta_observability_grid.csv")
@@ -55,25 +67,41 @@ def mock_model_prediction(trade):
         return "Level 2"
     return "Level 3"
 
+# --- Azure GPT-4o Client ---
+def get_rationale_from_gpt(ir_summary, vol_summary, model_pred):
+    client = AzureOpenAI(
+        api_key=st.secrets["AZURE_OPENAI_API_KEY"],
+        api_version="2024-02-01",
+        azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"]
+    )
+    messages = [
+        {"role": "system", "content": "You are a financial analyst skilled in explaining IFRS13 classifications."},
+        {"role": "user", "content": f"IR Delta Observability Summary: {ir_summary}\n\nVolatility Observability Summary: {vol_summary}\n\nModel Predicted Level: {model_pred}\n\nPlease provide a rationale explanation for this classification."}
+    ]
+    response = client.chat.completions.create(
+        model=st.secrets["AZURE_OPENAI_MODEL"],
+        messages=messages,
+        temperature=0.5
+    )
+    return response.choices[0].message.content
+
 # --- Section: Machine Learning Model Prediction ---
 with st.container(border=True):
     st.subheader("1. Machine Learning Model Prediction")
-    st.markdown(get_workflow_html_ml(st.session_state.ml_step), unsafe_allow_html=True)
+    step = 3 if st.session_state.ml_done else 0
+    st.markdown(get_workflow_html_ml(step), unsafe_allow_html=True)
 
-    if st.button("▶ Run ML Inference Workflow"):
-        st.session_state.ml_step = 1
+    if st.button("\u25B6 Run ML Inference Workflow"):
         st.code(json.dumps(trade, indent=2), language='json')
-        st.success("✅ ML Input ready")
-
-        st.session_state.ml_step = 2
+        st.success("\u2705 ML Input ready")
         st.info("Features extracted successfully (mock)")
 
-        st.session_state.ml_step = 3
         model_pred = mock_model_prediction(trade)
         st.session_state["ifrs13_level"] = model_pred
         st.session_state["model_pred"] = model_pred
-        st.success("✅ ML pipeline executed")
+        st.success("\u2705 ML pipeline executed")
         st.success(f"Predicted IFRS13 Level: {model_pred}")
+
         level_html = f"""
             <div style='background-color:#d4edda;color:#155724;padding:10px;
             border-left:5px solid #28a745;border-radius:5px;margin-top:20px;
@@ -81,88 +109,67 @@ with st.container(border=True):
         """
         st.sidebar.markdown(level_html, unsafe_allow_html=True)
 
+        st.session_state.ml_done = True
+        #st.rerun()
+
 # --- Section: Risk Factor-based Inference ---
 with st.container(border=True):
     st.subheader("2. Risk Factor-based Inference")
-    st.markdown(get_workflow_html_rf(st.session_state.rf_step), unsafe_allow_html=True)
+    step = 4 if st.session_state.rf_done else 0
+    st.markdown(get_workflow_html_rf(step), unsafe_allow_html=True)
 
-    if st.button("▶ Run Risk Factor Inference Workflow"):
-        st.session_state.rf_step = 1
-        st.session_state.greeks = simulate_greeks(trade)
-        st.success("✅ Greeks simulated successfully")
+    if st.button("\u25B6 Run Risk Factor Inference Workflow"):
+        greeks = simulate_greeks(trade)
+        st.success("\u2705 Risk factors simulated")
 
-        st.session_state.rf_step = 2
-        st.session_state.ir_result = ir_delta_stress_test(trade, st.session_state.greeks)
+        trade["trade_pv"], generated_pvs = generate_trade_pv_and_risk_pvs(greeks)
+        greeks.update(generated_pvs)
+        st.success("\u2705 IR Delta Observability Test Completed")
 
-        st.session_state.rf_step = 3
-        st.session_state.vol_result = vol_risk_stress_test(trade, st.session_state.greeks)
-
-        st.session_state.rf_step = 4
-        ir_stressed, ir_report, ir_stress_pv, ir_msgs = st.session_state.ir_result
-        vol_stressed, vol_report, vol_stress_pv, vol_msgs = st.session_state.vol_result
-
-        st.markdown("### IR Delta Observability Report")
+        ir_stressed, ir_report, ir_stress_pv, ir_msgs = ir_delta_stress_test(trade, greeks)
+        st.session_state["ir_summary"] = ir_msgs
         st.dataframe(pd.DataFrame(ir_report).T)
-        for msg in ir_msgs:
-            st.warning(msg)
 
-        st.markdown("### Volatility Observability Report")
+        st.success("\u2705 Volatility Observability Test Completed")
+        vol_stressed, vol_report, vol_stress_pv, vol_msgs = vol_risk_stress_test(trade, greeks)
+        st.session_state["vol_summary"] = vol_msgs
         st.dataframe(pd.DataFrame(vol_report).T)
-        for msg in vol_msgs:
-            st.warning(msg)
 
-        trade_pv, _ = generate_trade_pv_and_risk_pvs(st.session_state.greeks)
         total_stress_pv = ir_stress_pv + vol_stress_pv
-        st.session_state["summary_ir"] = ir_msgs
-        st.session_state["summary_vol"] = vol_msgs
-        final_level = "Level 3" if total_stress_pv > 0.1 * trade_pv else "Level 2"
+        final_level = "Level 3" if total_stress_pv > 0.1 * trade["trade_pv"] else "Level 2"
         st.metric("Total Stress PV", total_stress_pv)
+
         if final_level == "Level 3":
-            st.error("🔴 Unobservable stress exceeds threshold → Level 3")
+            st.error("\U0001F534 Unobservable stress exceeds threshold → Level 3")
         else:
-            st.success("🟢 Within threshold → Level 2")
+            st.success("\U0001F7E2 Within threshold → Level 2")
+
+        st.session_state["final_level"] = final_level
+        st.session_state.rf_done = True
+        #st.rerun()
 
 # --- Section: Rationale Explanation ---
 with st.container(border=True):
     st.subheader("3. Rationale Explanation")
-    st.markdown(get_workflow_html_rat(st.session_state.rat_step), unsafe_allow_html=True)
+    step = 1 if st.session_state.rat_done else 0
+    st.markdown(get_workflow_html_rat(step), unsafe_allow_html=True)
 
-    if st.button("▶ Run Rationale Generation"):
-        st.session_state.rat_step = 1
-
-        client = AzureOpenAI(
-            api_key=st.secrets["AZURE_OPENAI_API_KEY"],
-            api_version="2024-03-01-preview",
-            azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"],
-        )
-
-        ir_summary = "\n".join(st.session_state.get("summary_ir", []))
-        vol_summary = "\n".join(st.session_state.get("summary_vol", []))
-
-        prompt = f"""
-        Based on the trade details below and predicted IFRS13 level, provide a rationale:
-
-        Trade: {json.dumps(trade, indent=2)}
-        Predicted Level: {st.session_state.get('ifrs13_level', 'N/A')}
-
-        IR Delta Observability Summary:
-        {ir_summary}
-
-        Volatility Observability Summary:
-        {vol_summary}
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are a financial analyst providing IFRS13 rationale."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5
+    if st.button("\u25B6 Run Rationale Generation Workflow"):
+        if all(k in st.session_state for k in ["ir_summary", "vol_summary", "model_pred"]):
+            rationale = get_rationale_from_gpt(
+                ir_summary="\n".join(st.session_state["ir_summary"]),
+                vol_summary="\n".join(st.session_state["vol_summary"]),
+                model_pred=st.session_state["model_pred"]
             )
-            rationale = response.choices[0].message.content
-            st.success("Rationale generated successfully")
-            st.markdown(f"**Explanation:**\n\n{rationale}")
-        except Exception as e:
-            st.error(f"Error generating rationale: {e}")
+            st.success("\u2705 Rationale explanation generated below")
+            st.markdown(
+                f"""<div style='background-color:#f1f1f1;color:#000000;padding:10px;
+                border-left:5px solid #0078D7;border-radius:5px'>
+                <b>Explanation:</b><br>{rationale}</div>""",
+                unsafe_allow_html=True
+            )
+
+            st.session_state.rat_done = True
+            #st.rerun()
+        else:
+            st.warning("Run both ML and Risk Factor workflows before generating rationale.")

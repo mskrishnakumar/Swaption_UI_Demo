@@ -118,7 +118,7 @@ def get_workflow_html_ml(step):
     <div class="lane">
         <div class="header model">Model Inference</div>
         <div class="horizontal-body">
-            {box("Prepare ML Input (JSON)", 0)}
+            {box("Prepare Input (JSON) to ML Model", 0)}
             <div class="arrow-model">▶</div>
             {box("Featurization", 1)}
             <div class="arrow-model">▶</div>
@@ -160,9 +160,9 @@ def get_workflow_html_rat(step):
     <div class="lane">
         <div class="header rationale">Rationale Explanation</div>
         <div class="horizontal-body">
-            {box("Collect Evidence", 0)}
+            {box("Collate Inputs", 0)}
             <div class="arrow-rationale">▶</div>
-            {box("Query GPT", 1)}
+            {box("Query LLM", 1)}
             <div class="arrow-rationale">▶</div>
             {box("Summarize Insight", 2)}
         </div>

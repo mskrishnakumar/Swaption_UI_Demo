@@ -8,9 +8,9 @@ from Observability_Stress_Module import run_full_observability_stress_test, simu
 from workflow_styles import get_workflow_css, get_workflow_html_ml, get_workflow_html_rf, get_workflow_html_rat
 
 # --- Initialize Session State ---
-for key in ["ml_step", "rf_step", "rat_step", "show_ml_workflow", "show_rf_workflow", "show_rat_workflow"]:
+for key in ["ml_step", "rf_step", "rat_step"]:
     if key not in st.session_state:
-        st.session_state[key] = 0 if "step" in key else False
+        st.session_state[key] = 0
 
 # --- Load Observability Grids ---
 ir_grid = pd.read_csv("ir_delta_observability_grid.csv")
@@ -56,61 +56,48 @@ def mock_model_prediction(trade):
     return "Level 3"
 
 # --- Section: Machine Learning Model Prediction ---
-st.subheader("1. Machine Learning Model Prediction")
-st.markdown(get_workflow_html_ml(st.session_state.ml_step), unsafe_allow_html=True)
+with st.container(border=True):
+    st.subheader("1. Machine Learning Model Prediction")
+    st.markdown(get_workflow_html_ml(st.session_state.ml_step), unsafe_allow_html=True)
 
-with st.expander("Step 1: Prepare ML Input", expanded=st.session_state.ml_step >= 1):
-    if st.button("🔁 Run Step 1: Prepare ML Input") or st.session_state.ml_step >= 1:
-        st.session_state.ml_step = max(st.session_state.ml_step, 1)
+    if st.button("▶ Run ML Inference Workflow"):
+        st.session_state.ml_step = 1
         st.code(json.dumps(trade, indent=2), language='json')
         st.success("✅ ML Input ready")
 
-with st.expander("Step 2: Featurization", expanded=st.session_state.ml_step >= 2):
-    if st.button("🧮 Run Step 2: Featurization") or st.session_state.ml_step >= 2:
-        st.session_state.ml_step = max(st.session_state.ml_step, 2)
+        st.session_state.ml_step = 2
         st.info("Features extracted successfully (mock)")
 
-with st.expander("Step 3: ML Model Inference", expanded=st.session_state.ml_step >= 3):
-    if st.button("🤖 Run Step 3: Model Inference") or st.session_state.ml_step >= 3:
-        if st.session_state.ml_step < 3:
-            model_pred = mock_model_prediction(trade)
-            st.session_state["ifrs13_level"] = model_pred
-            st.session_state["model_pred"] = model_pred
-        st.session_state.ml_step = max(st.session_state.ml_step, 3)
-        st.success("ML pipeline executed")
-        st.success(f"Predicted IFRS13 Level: {st.session_state['model_pred']}")
-        level_html = f"""<div style='background-color:#d4edda;color:#155724;padding:10px;border-left:5px solid #28a745;border-radius:5px;margin-top:20px;font-weight:bold'>IFRS13 Level:<br>{st.session_state['model_pred']}</div>"""
+        st.session_state.ml_step = 3
+        model_pred = mock_model_prediction(trade)
+        st.session_state["ifrs13_level"] = model_pred
+        st.session_state["model_pred"] = model_pred
+        st.success("✅ ML pipeline executed")
+        st.success(f"Predicted IFRS13 Level: {model_pred}")
+        level_html = f"""
+            <div style='background-color:#d4edda;color:#155724;padding:10px;
+            border-left:5px solid #28a745;border-radius:5px;margin-top:20px;
+            font-weight:bold'>IFRS13 Level:<br>{model_pred}</div>
+        """
         st.sidebar.markdown(level_html, unsafe_allow_html=True)
 
 # --- Section: Risk Factor-based Inference ---
-st.subheader("2. Risk Factor-based Inference")
-st.markdown(get_workflow_html_rf(st.session_state.rf_step), unsafe_allow_html=True)
+with st.container(border=True):
+    st.subheader("2. Risk Factor-based Inference")
+    st.markdown(get_workflow_html_rf(st.session_state.rf_step), unsafe_allow_html=True)
 
-with st.expander("Step 1: Source Risk Factors", expanded=st.session_state.rf_step >= 1):
-    if st.button("📊 Run Step 1") or st.session_state.rf_step >= 1:
-        if st.session_state.rf_step < 1:
-            st.session_state.rf_step = 1
-            st.session_state.greeks = simulate_greeks(trade)
+    if st.button("▶ Run Risk Factor Inference Workflow"):
+        st.session_state.rf_step = 1
+        st.session_state.greeks = simulate_greeks(trade)
         st.success("✅ Greeks simulated successfully")
 
-with st.expander("Step 2: Run IR Delta Observability Test", expanded=st.session_state.rf_step >= 2):
-    if st.button("📈 Run Step 2") or st.session_state.rf_step >= 2:
-        if st.session_state.rf_step < 2:
-            st.session_state.rf_step = 2
-            greeks = st.session_state.greeks
-            st.session_state.ir_result = ir_delta_stress_test(trade, greeks)
+        st.session_state.rf_step = 2
+        st.session_state.ir_result = ir_delta_stress_test(trade, st.session_state.greeks)
 
-with st.expander("Step 3: Run Volatility Observability Test", expanded=st.session_state.rf_step >= 3):
-    if st.button("📉 Run Step 3") or st.session_state.rf_step >= 3:
-        if st.session_state.rf_step < 3:
-            st.session_state.rf_step = 3
-            greeks = st.session_state.greeks
-            st.session_state.vol_result = vol_risk_stress_test(trade, greeks)
+        st.session_state.rf_step = 3
+        st.session_state.vol_result = vol_risk_stress_test(trade, st.session_state.greeks)
 
-with st.expander("Step 4: Assess Observability of Total PV", expanded=st.session_state.rf_step >= 4):
-    if st.button("🧮 Run Step 4") or st.session_state.rf_step >= 4:
-        if st.session_state.rf_step < 4:
-            st.session_state.rf_step = 4
+        st.session_state.rf_step = 4
         ir_stressed, ir_report, ir_stress_pv, ir_msgs = st.session_state.ir_result
         vol_stressed, vol_report, vol_stress_pv, vol_msgs = st.session_state.vol_result
 
@@ -136,9 +123,11 @@ with st.expander("Step 4: Assess Observability of Total PV", expanded=st.session
             st.success("🟢 Within threshold → Level 2")
 
 # --- Section: Rationale Explanation ---
-st.subheader("3. Rationale Explanation")
-with st.expander("Step 1: Generate Explanation", expanded=st.session_state.rat_step >= 1):
-    if st.button("💬 Run Step 1") or st.session_state.rat_step >= 1:
+with st.container(border=True):
+    st.subheader("3. Rationale Explanation")
+    st.markdown(get_workflow_html_rat(st.session_state.rat_step), unsafe_allow_html=True)
+
+    if st.button("▶ Run Rationale Generation"):
         st.session_state.rat_step = 1
 
         client = AzureOpenAI(
@@ -170,13 +159,10 @@ with st.expander("Step 1: Generate Explanation", expanded=st.session_state.rat_s
                     {"role": "system", "content": "You are a financial analyst providing IFRS13 rationale."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=800
+                temperature=0.5
             )
             rationale = response.choices[0].message.content
             st.success("Rationale generated successfully")
             st.markdown(f"**Explanation:**\n\n{rationale}")
         except Exception as e:
             st.error(f"Error generating rationale: {e}")
-
-st.markdown(get_workflow_html_rat(st.session_state.rat_step), unsafe_allow_html=True)

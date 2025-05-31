@@ -138,11 +138,11 @@ def get_workflow_html_rf(step):
     <div class="lane">
         <div class="header stress">Risk Factor Inference</div>
         <div class="horizontal-body">
-            {box("Source Risk Factors", 0)}
+            {box("Identify Risk Factors", 0)}
             <div class="arrow-stress">▶</div>
-            {box("Run IR Delta Observability Test", 1)}
+            {box("Test IR Delta Observability", 1)}
             <div class="arrow-stress">▶</div>
-            {box("Run Volatality Observability Test", 2)}
+            {box("Test Volatality Observability", 2)}
             <div class="arrow-stress">▶</div>
             {box("Assess observability of Total PV", 3)}
         </div>

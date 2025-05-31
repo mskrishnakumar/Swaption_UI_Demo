@@ -136,7 +136,7 @@ def get_workflow_html_rf(step):
 
     html = f"""
     <div class="lane">
-        <div class="header stress">Risk Factor Inference</div>
+        <div class="header stress">Risk Factor Observability</div>
         <div class="horizontal-body">
             {box("Identify Risk Factors", 0)}
             <div class="arrow-stress">▶</div>

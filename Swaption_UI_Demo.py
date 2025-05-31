@@ -143,9 +143,9 @@ with st.expander("Step 1: Generate Explanation", expanded=st.session_state.rat_s
 
         # GPT-based rationale generation using Azure OpenAI
         openai.api_type = "azure"
-        openai.api_base = "https://<your-azure-endpoint>.openai.azure.com/"
+        openai.api_base = "https://llmwg.services.ai.azure.com/api/projects/RationaleExplainer"
         openai.api_version = "2024-03-01-preview"
-        openai.api_key = "<your-azure-api-key>"
+        openai.api_key = "8F5cUeF5F6bt9AMBtGNi5Dy8F2FDNNGcwCYHivbw5khMZ6yYuDupJQQJ99BEACYeBjFXJ3w3AAAAACOGIcf6"
 
         ir_summary = "\n".join(st.session_state.get("summary_ir", []))
         vol_summary = "\n".join(st.session_state.get("summary_vol", []))

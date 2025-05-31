@@ -3,88 +3,30 @@ import pandas as pd
 import numpy as np
 import json
 from datetime import date
+import openai
 from Observability_Stress_Module import run_full_observability_stress_test, simulate_greeks, ir_delta_stress_test, vol_risk_stress_test, generate_trade_pv_and_risk_pvs, ois_curve_map
+from workflow_styles import get_workflow_css, get_workflow_html_ml, get_workflow_html_rf, get_workflow_html_rat
 
 # --- Initialize Session State ---
-if "workflow_step" not in st.session_state:
-    st.session_state.workflow_step = 0
+for key in ["ml_step", "rf_step", "rat_step", "show_ml_workflow", "show_rf_workflow", "show_rat_workflow"]:
+    if key not in st.session_state:
+        st.session_state[key] = 0 if "step" in key else False
 
 # --- Load Observability Grids ---
 ir_grid = pd.read_csv("ir_delta_observability_grid.csv")
 ir_grid.columns = ir_grid.columns.str.strip()
 ir_grid["Observable Tenor (Years)"] = pd.to_numeric(ir_grid["Observable Tenor (Years)"], errors="coerce")
-
 vol_grid = pd.read_csv("volatility_observability_grid.csv")
 vol_grid.columns = vol_grid.columns.str.strip()
 
 # --- Page Config ---
 st.set_page_config(page_title="Swaption - IFRS13 Classification", layout="wide")
-st.title("Swaption - IFRS13 Observability Classification Orchestrator")
+st.title("Swaption - IFRS13 Observability Classification")
 
-# --- Stepper UI ---
-step_labels = ["1. Model Prediction", "2. Simulate Risk Components", "3. Observability Stress Test", "4. Explain Rationale"]
-step_html = '<div class="stepper">'
-for i, label in enumerate(step_labels):
-    if st.session_state.workflow_step == i + 1:
-        step_html += f'<div class="step"><span class="active">{label}</span></div>'
-    else:
-        step_html += f'<div class="step"><span>{label}</span></div>'
-step_html += '</div>'
+# --- Workflow CSS ---
+st.markdown(get_workflow_css(), unsafe_allow_html=True)
 
-st.markdown(f"""
-<style>
-.stepper {{
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 1em;
-  font-weight: bold;
-  padding: 10px;
-}}
-.step {{
-  width: 100%;
-  text-align: center;
-  position: relative;
-}}
-.step::before {{
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #444;
-  z-index: 0;
-}}
-.step span {{
-  background: #222;
-  color: #ddd;
-  padding: 0.5em 1em;
-  border-radius: 20px;
-  position: relative;
-  z-index: 1;
-  display: inline-block;
-  border: 1px solid #888;
-}}
-.step span.active {{
-  background: #0d6efd;
-  color: white;
-  border: none;
-}}
-</style>
-{step_html}
-""", unsafe_allow_html=True)
-
-# --- Substepper ---
-def render_substepper(active="3a"):
-    html = f"""
-    <div class="substepper">
-        <div class="substep {'active' if active == '3a' else ''}">3a. IR Delta Stress</div>
-        <div class="substep {'active' if active == '3b' else ''}">3b. Volatility Stress</div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-# --- Sidebar Inputs ---
+# --- Sidebar ---
 st.sidebar.header("Swaption Trade Inputs")
 product_type = st.sidebar.selectbox("Product Type", ["IR Swaption", "Bond", "CapFloor", "IRSwap"], index=0)
 notional = st.sidebar.number_input("Notional", min_value=1_000_000, step=1_000_000, value=10_000_000)
@@ -107,87 +49,133 @@ trade = {
     "notional": notional
 }
 
-# --- Model Logic ---
+# --- Model Prediction Mock ---
 def mock_model_prediction(trade):
     if trade["expiry_tenor"] < 5 and trade["maturity_tenor"] < 15 and trade["strike"] < 3.0:
         return "Level 2"
     return "Level 3"
 
-# --- Workflow Execution ---
-if st.sidebar.button(" Run IFRS 13 Classification Workflow"):
+# --- Section: Machine Learning Model Prediction ---
+st.subheader("1. Machine Learning Model Prediction")
+st.markdown(get_workflow_html_ml(st.session_state.ml_step), unsafe_allow_html=True)
 
-    # Step 1 - Prediction
-    st.session_state.workflow_step = 1
-    st.subheader("1. Machine Learning Model Prediction")
-    st.markdown("### \U0001F4E6 Trade JSON (Input to ML Model)")
-    st.code(json.dumps(trade, indent=2), language='json')
-    model_pred = mock_model_prediction(trade)
-    st.session_state["ifrs13_level"] = model_pred
-    st.success(f"Predicted IFRS13 Level: {model_pred}")
-    #render_custom_progress(25)
-    level_html = f"""<div style='background-color:#d4edda;color:#155724;padding:10px;border-left:5px solid #28a745;border-radius:5px;margin-top:20px;font-weight:bold'>IFRS13 Level:<br>{model_pred}</div>"""
-    st.sidebar.markdown(level_html, unsafe_allow_html=True)
+with st.expander("Step 1: Prepare ML Input", expanded=st.session_state.ml_step >= 1):
+    if st.button("🔁 Run Step 1: Prepare ML Input") or st.session_state.ml_step >= 1:
+        st.session_state.ml_step = max(st.session_state.ml_step, 1)
+        st.code(json.dumps(trade, indent=2), language='json')
+        st.success("✅ ML Input ready")
 
-    # Step 2 - Greeks Simulation
-    st.session_state.workflow_step = 2
-    st.subheader("2. Simulate Risk Components")
-    greeks = simulate_greeks(trade)
-    st.json(greeks)
-    #render_custom_progress(50)
+with st.expander("Step 2: Featurization", expanded=st.session_state.ml_step >= 2):
+    if st.button("🧮 Run Step 2: Featurization") or st.session_state.ml_step >= 2:
+        st.session_state.ml_step = max(st.session_state.ml_step, 2)
+        st.info("Features extracted successfully (mock)")
 
-    # Step 3 - Stress Test
-    st.session_state.workflow_step = 3
-    #render_custom_progress(75)
+with st.expander("Step 3: ML Model Inference", expanded=st.session_state.ml_step >= 3):
+    if st.button("🤖 Run Step 3: Model Inference") or st.session_state.ml_step >= 3:
+        if st.session_state.ml_step < 3:
+            model_pred = mock_model_prediction(trade)
+            st.session_state["ifrs13_level"] = model_pred
+            st.session_state["model_pred"] = model_pred
+        st.session_state.ml_step = max(st.session_state.ml_step, 3)
+        st.success("ML pipeline executed")
+        st.success(f"Predicted IFRS13 Level: {st.session_state['model_pred']}")
+        level_html = f"""<div style='background-color:#d4edda;color:#155724;padding:10px;border-left:5px solid #28a745;border-radius:5px;margin-top:20px;font-weight:bold'>IFRS13 Level:<br>{st.session_state['model_pred']}</div>"""
+        st.sidebar.markdown(level_html, unsafe_allow_html=True)
 
-    if "trade_pv" not in trade:
-        trade["trade_pv"], generated_pvs = generate_trade_pv_and_risk_pvs(greeks)
-        greeks.update(generated_pvs)
+# --- Section: Risk Factor-based Inference ---
+st.subheader("2. Risk Factor-based Inference")
+st.markdown(get_workflow_html_rf(st.session_state.rf_step), unsafe_allow_html=True)
 
-    st.subheader("3a. IR Delta Observability-Based Stress Test")
-    ir_stressed, ir_report, ir_stress_pv, ir_msgs = ir_delta_stress_test(trade, greeks, ir_grid, ois_curve_map)
-    ir_report_df = pd.DataFrame(ir_report).T
-    ir_report_df.index.name = "IR Risk Factor"
-    st.markdown("#### \U0001F4C9 IR Delta Observability Report")
-    st.dataframe(ir_report_df)
-    for msg in ir_msgs:
-            st.markdown(f"""
-            <div style='background-color:#fff3cd; color:#856404; padding:10px; border-left:5px solid #ffeeba; border-radius:5px; margin-bottom:5px;'>
-            {msg}
-            </div>
-            """, unsafe_allow_html=True)
+with st.expander("Step 1: Source Risk Factors", expanded=st.session_state.rf_step >= 1):
+    if st.button("📊 Run Step 1") or st.session_state.rf_step >= 1:
+        if st.session_state.rf_step < 1:
+            st.session_state.rf_step = 1
+            st.session_state.greeks = simulate_greeks(trade)
+        st.success("✅ Greeks simulated successfully")
 
-    st.subheader("3b. Volatility Observability-Based Stress Test")
-    vol_stressed, vol_report, vol_stress_pv, vol_msgs = vol_risk_stress_test(trade, greeks, vol_grid)
-    vol_report_df = pd.DataFrame(vol_report).T
-    vol_report_df.index.name = "Volatility Risk Factor"
-    st.markdown("#### \U0001F4C9 Volatility Observability Report")
-    st.dataframe(vol_report_df)
-    for msg in vol_msgs:
-             st.markdown(f"""
-            <div style='background-color:#fff3cd; color:#856404; padding:10px; border-left:5px solid #ffeeba; border-radius:5px; margin-bottom:5px;'>
-            {msg}
-            </div>
-            """, unsafe_allow_html=True)
-             
-    total_stress_pv = ir_stress_pv + vol_stress_pv
-    final_level = "Level 3" if total_stress_pv > 0.1 * trade["trade_pv"] else "Level 2"
-    st.markdown("### \U0001F4C9 Combined Summary Metrics")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Total Trade PV", f"{trade['trade_pv']:,.2f}")
-    with col2:
-        st.metric("Unobservable PV from IR Delta", f"{ir_stress_pv:,.2f}")
-        st.metric("Unobservable PV from Volatility", f"{vol_stress_pv:,.2f}")
-        st.metric("Total Stress PV from Unobservable Risks", f"{total_stress_pv:,.2f}")
+with st.expander("Step 2: Run IR Delta Observability Test", expanded=st.session_state.rf_step >= 2):
+    if st.button("📈 Run Step 2") or st.session_state.rf_step >= 2:
+        if st.session_state.rf_step < 2:
+            st.session_state.rf_step = 2
+            greeks = st.session_state.greeks
+            st.session_state.ir_result = ir_delta_stress_test(trade, greeks)
 
+with st.expander("Step 3: Run Volatility Observability Test", expanded=st.session_state.rf_step >= 3):
+    if st.button("📉 Run Step 3") or st.session_state.rf_step >= 3:
+        if st.session_state.rf_step < 3:
+            st.session_state.rf_step = 3
+            greeks = st.session_state.greeks
+            st.session_state.vol_result = vol_risk_stress_test(trade, greeks)
 
-    if final_level == "Level 3":
-        st.error("\U0001F534 PV impact from unobservable Stress factors exceeds 10% of Trade PV → Level 3")
-    else:
-        st.success("\U0001F7E2 PV impact from unobservable Stress factors within 10% of Trade PV → Level 2")
+with st.expander("Step 4: Assess Observability of Total PV", expanded=st.session_state.rf_step >= 4):
+    if st.button("🧮 Run Step 4") or st.session_state.rf_step >= 4:
+        if st.session_state.rf_step < 4:
+            st.session_state.rf_step = 4
+        ir_stressed, ir_report, ir_stress_pv, ir_msgs = st.session_state.ir_result
+        vol_stressed, vol_report, vol_stress_pv, vol_msgs = st.session_state.vol_result
 
-    # Step 4 - Rationale
-    st.session_state.workflow_step = 4
-    st.subheader("4. Explain Rationale")
-    st.info("\U0001F50D Rationale explanation will be generated via Azure AI Foundry (gpt-4o API integration coming soon).")
-    #render_custom_progress(100)
+        st.markdown("### IR Delta Observability Report")
+        st.dataframe(pd.DataFrame(ir_report).T)
+        for msg in ir_msgs:
+            st.warning(msg)
+
+        st.markdown("### Volatility Observability Report")
+        st.dataframe(pd.DataFrame(vol_report).T)
+        for msg in vol_msgs:
+            st.warning(msg)
+
+        trade_pv, _ = generate_trade_pv_and_risk_pvs(st.session_state.greeks)
+        total_stress_pv = ir_stress_pv + vol_stress_pv
+        st.session_state["summary_ir"] = ir_msgs
+        st.session_state["summary_vol"] = vol_msgs
+        final_level = "Level 3" if total_stress_pv > 0.1 * trade_pv else "Level 2"
+        st.metric("Total Stress PV", total_stress_pv)
+        if final_level == "Level 3":
+            st.error("🔴 Unobservable stress exceeds threshold → Level 3")
+        else:
+            st.success("🟢 Within threshold → Level 2")
+
+# --- Section: Rationale Explanation ---
+st.subheader("3. Rationale Explanation")
+with st.expander("Step 1: Generate Explanation", expanded=st.session_state.rat_step >= 1):
+    if st.button("💬 Run Step 1") or st.session_state.rat_step >= 1:
+        st.session_state.rat_step = 1
+
+        # GPT-based rationale generation using Azure OpenAI
+        openai.api_type = "azure"
+        openai.api_base = "https://<your-azure-endpoint>.openai.azure.com/"
+        openai.api_version = "2024-03-01-preview"
+        openai.api_key = "<your-azure-api-key>"
+
+        ir_summary = "\n".join(st.session_state.get("summary_ir", []))
+        vol_summary = "\n".join(st.session_state.get("summary_vol", []))
+
+        prompt = f"""
+        Based on the trade details below and predicted IFRS13 level, provide a rationale:
+
+        Trade: {json.dumps(trade, indent=2)}
+        Predicted Level: {st.session_state.get('ifrs13_level', 'N/A')}
+
+        IR Delta Observability Summary:
+        {ir_summary}
+
+        Volatility Observability Summary:
+        {vol_summary}
+        """
+
+        try:
+            response = openai.ChatCompletion.create(
+                engine="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are a financial analyst providing IFRS13 rationale."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5
+            )
+            rationale = response["choices"][0]["message"]["content"]
+            st.success("Rationale generated successfully")
+            st.markdown(f"**Explanation:**\n\n{rationale}")
+        except Exception as e:
+            st.error(f"Error generating rationale: {e}")
+
+st.markdown(get_workflow_html_rat(st.session_state.rat_step), unsafe_allow_html=True)

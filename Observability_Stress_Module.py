@@ -8,6 +8,13 @@ ois_curve_map = {
     "GBP": "GBP.OIS",
     "JPY": "JPY.OIS"
 }
+#--- Load Observability Grids ---
+ir_grid = pd.read_csv("ir_delta_observability_grid.csv")
+ir_grid.columns = ir_grid.columns.str.strip()
+ir_grid["Observable Tenor (Years)"] = pd.to_numeric(ir_grid["Observable Tenor (Years)"], errors="coerce")
+vol_grid = pd.read_csv("volatility_observability_grid.csv")
+vol_grid.columns = vol_grid.columns.str.strip()
+
 
 # Generate Risk Factors
 def simulate_greeks(trade):
@@ -37,7 +44,7 @@ def generate_trade_pv_and_risk_pvs(greeks):
     return total_pv, pv_greeks
 
 # IR Delta Stress Test
-def ir_delta_stress_test(trade, greeks, ir_grid, ois_curve_map):
+def ir_delta_stress_test(trade, greeks):
     messages = []
     stressed = {}
     report = {}
@@ -82,7 +89,7 @@ def ir_delta_stress_test(trade, greeks, ir_grid, ois_curve_map):
     return stressed, report, total_stress_pv, messages
 
 # Volatility Risk Stress Test
-def vol_risk_stress_test(trade, greeks, vol_grid):
+def vol_risk_stress_test(trade, greeks):
     messages = []
     stressed = {}
     report = {}
@@ -123,15 +130,15 @@ def vol_risk_stress_test(trade, greeks, vol_grid):
     return stressed, report, total_stress_pv, messages
 
 # Decion Maker - Combine & Final Assessment
-def run_full_observability_stress_test(trade, greeks, ir_grid, vol_grid, ois_curve_map):
+def run_full_observability_stress_test(trade, greeks):
     # Ensure PVs are generated
     if "trade_pv" not in trade:
         trade["trade_pv"], generated_pvs = generate_trade_pv_and_risk_pvs(greeks)
         greeks.update(generated_pvs)
 
     # Run individual stress tests
-    ir_stressed, ir_report, ir_stress_pv, ir_msgs = ir_delta_stress_test(trade, greeks, ir_grid, ois_curve_map)
-    vol_stressed, vol_report, vol_stress_pv, vol_msgs = vol_risk_stress_test(trade, greeks, vol_grid)
+    ir_stressed, ir_report, ir_stress_pv, ir_msgs = ir_delta_stress_test(trade, greeks)
+    vol_stressed, vol_report, vol_stress_pv, vol_msgs = vol_risk_stress_test(trade, greeks)
 
     total_stress_pv = ir_stress_pv + vol_stress_pv
     final_level = "Level 3" if total_stress_pv > 0.1 * trade["trade_pv"] else "Level 2"

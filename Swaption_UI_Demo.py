@@ -75,8 +75,24 @@ def get_rationale_from_gpt(ir_summary, vol_summary, model_pred):
         azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"]
     )
     messages = [
-        {"role": "system", "content": "You are a financial analyst skilled in explaining IFRS13 classifications."},
-        {"role": "user", "content": f"IR Delta Observability Summary: {ir_summary}\n\nVolatility Observability Summary: {vol_summary}\n\nModel Predicted Level: {model_pred}\n\nPlease provide a rationale explanation for this classification."}
+        {
+            "role": "system",
+            "content": (
+                "You are a financial analyst who explains IFRS 13 classification decisions "
+                "clearly and concisely based on input data. Do not include background information "
+                "about IFRS 13. Focus strictly on justifying the classification result."
+            )
+        },
+        {
+            "role": "user",
+            "content": (
+                f"IR Delta Observability Summary: {ir_summary}\n\n"
+                f"Volatility Observability Summary: {vol_summary}\n\n"
+                f"Model Predicted Level: {model_pred}\n\n"
+                "Based on the data above, provide a concise justification for the predicted IFRS 13 level. "
+                "Keep the response brief, technical, and to the point."
+            )
+        }
     ]
     response = client.chat.completions.create(
         model=st.secrets["AZURE_OPENAI_MODEL"],
@@ -84,6 +100,7 @@ def get_rationale_from_gpt(ir_summary, vol_summary, model_pred):
         temperature=0.5
     )
     return response.choices[0].message.content
+
 
 # --- Section: Machine Learning Model Prediction ---
 with st.container(border=True):
@@ -114,7 +131,7 @@ with st.container(border=True):
 
 # --- Section: Risk Factor-based Inference ---
 with st.container(border=True):
-    st.subheader("2. Risk Factor-based Inference")
+    st.subheader("2. Risk Factor Observability testing")
     step = 4 if st.session_state.rf_done else 0
     st.markdown(get_workflow_html_rf(step), unsafe_allow_html=True)
 

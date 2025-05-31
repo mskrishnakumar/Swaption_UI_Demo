@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import json
 from datetime import date
-import openai
+from openai import AzureOpenAI
 from Observability_Stress_Module import run_full_observability_stress_test, simulate_greeks, ir_delta_stress_test, vol_risk_stress_test, generate_trade_pv_and_risk_pvs, ois_curve_map
 from workflow_styles import get_workflow_css, get_workflow_html_ml, get_workflow_html_rf, get_workflow_html_rat
 
@@ -141,11 +141,11 @@ with st.expander("Step 1: Generate Explanation", expanded=st.session_state.rat_s
     if st.button("💬 Run Step 1") or st.session_state.rat_step >= 1:
         st.session_state.rat_step = 1
 
-        # GPT-based rationale generation using Azure OpenAI
-        openai.api_type = "azure"
-        openai.api_base = "https://llmwg.services.ai.azure.com/api/projects/RationaleExplainer"
-        openai.api_version = "2024-03-01-preview"
-        openai.api_key = "8F5cUeF5F6bt9AMBtGNi5Dy8F2FDNNGcwCYHivbw5khMZ6yYuDupJQQJ99BEACYeBjFXJ3w3AAAAACOGIcf6"
+        client = AzureOpenAI(
+            api_key=st.secrets["AZURE_OPENAI_API_KEY"],
+            api_version="2024-03-01-preview",
+            azure_endpoint=st.secrets["AZURE_OPENAI_ENDPOINT"],
+        )
 
         ir_summary = "\n".join(st.session_state.get("summary_ir", []))
         vol_summary = "\n".join(st.session_state.get("summary_vol", []))
@@ -164,15 +164,16 @@ with st.expander("Step 1: Generate Explanation", expanded=st.session_state.rat_s
         """
 
         try:
-            response = openai.ChatCompletion.create(
-                engine="gpt-4o",
+            response = client.chat.completions.create(
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are a financial analyst providing IFRS13 rationale."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.5
+                temperature=0.7,
+                max_tokens=800
             )
-            rationale = response["choices"][0]["message"]["content"]
+            rationale = response.choices[0].message.content
             st.success("Rationale generated successfully")
             st.markdown(f"**Explanation:**\n\n{rationale}")
         except Exception as e:

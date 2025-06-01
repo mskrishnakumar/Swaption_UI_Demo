@@ -123,7 +123,7 @@ def call_azure_ml_model(trade):
             "data": [[
                 trade["product_type"],
                 trade["currency"],
-                "Receiver",  # If you support option_type in UI, replace with trade["option_type"]
+                trade["option_type"],
                 trade["notional"],
                 trade["strike"],
                 trade["expiry_tenor"],

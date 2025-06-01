@@ -122,7 +122,7 @@ def get_workflow_html_ml(step):
             <div class="arrow-model">▶</div>
             {box("Featurization", 1)}
             <div class="arrow-model">▶</div>
-            {box("Execute Model Pipeline", 2)}
+            {box("Execute Model", 2)}
         </div>
     </div>
     """

@@ -43,6 +43,7 @@ st.sidebar.header("Trade Details")
 product_type = st.sidebar.selectbox("Product Type", ["IR Swaption", "Bond", "CapFloor", "IRSwap"], index=0)
 notional = st.sidebar.number_input("Notional", min_value=1_000_000, step=1_000_000, value=10_000_000)
 currency = st.sidebar.selectbox("Currency", ["USD", "EUR", "GBP", "JPY"])
+option_type = st.sidebar.selectbox("Option Type", ["Receiver", "Payer"])
 strike = st.sidebar.slider("Strike (%)", 0.0, 10.0, 2.5, 0.1)
 expiry_tenor = st.sidebar.selectbox("Expiry Tenor (Y)", [2, 3, 5])
 expiry_date = date.today().replace(year=date.today().year + expiry_tenor)
@@ -55,6 +56,7 @@ st.sidebar.markdown(f"\U0001F4C5 **Maturity Date**: {maturity_date.strftime('%d-
 trade = {
     "product_type": product_type,
     "currency": currency,
+    "option_type": option_type,
     "expiry_tenor": expiry_tenor,
     "maturity_tenor": maturity_tenor,
     "strike": strike,
@@ -89,8 +91,9 @@ def get_rationale_from_gpt(ir_summary, vol_summary, model_pred):
                 f"IR Delta Observability Summary: {ir_summary}\n\n"
                 f"Volatility Observability Summary: {vol_summary}\n\n"
                 f"Model Predicted Level: {model_pred}\n\n"
-                "Provide a brief, direct justification for the predicted IFRS 13 level. "
-                "Conclude with a single line that summarizes the reasoning or notes confidence in the classification."
+                "Analyze Model predicted IFRS 13 level and risk factor observability results (using 10% threshold on trade PV) and decide on the IFRS 13 level for the trade. "
+                "Display the chosen level in bold and provide a brief, direct justification for the predicted IFRS 13 level. "
+                "Conclude with a single line that summarizes confidence level High, Medium or Low and the reasoning or notes confidence in the classification."
             )
         }
     ]
@@ -101,26 +104,141 @@ def get_rationale_from_gpt(ir_summary, vol_summary, model_pred):
     )
     return response.choices[0].message.content
 
+import requests
 
+def call_azure_ml_model(trade):
+    # Format the input in Azure expected tabular format
+    payload = {
+        "input_data": {
+            "columns": [
+                "product_type",
+                "currency",
+                "option_type",
+                "notional",
+                "strike",
+                "expiry_tenor",
+                "maturity_tenor"
+            ],
+            "index": [0],
+            "data": [[
+                trade["product_type"],
+                trade["currency"],
+                "Receiver",  # If you support option_type in UI, replace with trade["option_type"]
+                trade["notional"],
+                trade["strike"],
+                trade["expiry_tenor"],
+                trade["maturity_tenor"]
+            ]]
+        }
+    }
+
+    endpoint = st.secrets["AZURE_ML_ENDPOINT"]
+    api_key = st.secrets["AZURE_ML_API_KEY"]
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    response = requests.post(endpoint, headers=headers, json=payload)
+    response.raise_for_status()  # Raise an error if bad response
+
+    result = response.json()
+    return result[0]  # e.g., "Level 3"
+
+
+# --- Section: Machine Learning Model Prediction ---
 # --- Section: Machine Learning Model Prediction ---
 with st.container(border=True):
     st.subheader("1. Machine Learning Model Prediction")
-    step = 3 if st.session_state.ml_done else 0
+
+    # Stepper
+    step = 3 if st.session_state.get("ml_done") else 0
     st.markdown(get_workflow_html_ml(step), unsafe_allow_html=True)
 
-    if st.button("\u25B6 Run ML Inference Workflow"):
-        st.code(json.dumps(trade, indent=2), language='json')
-        st.success("\u2705 ML Input ready")
-        st.info("Features extracted successfully (mock)")
+    if st.button("\u25B6 Run Model Inference", key="run_ml"):
+        # Build Payload
+        payload = {
+            "input_data": {
+                "columns": [
+                    "product_type", "currency", "option_type",
+                    "notional", "strike", "expiry_tenor", "maturity_tenor"
+                ],
+                "index": [0],
+                "data": [[
+                    trade["product_type"],
+                    trade["currency"],
+                    trade["option_type"],
+                    trade["notional"],
+                    trade["strike"],
+                    trade["expiry_tenor"],
+                    trade["maturity_tenor"]
+                ]]
+            }
+        }
 
-        model_pred = mock_model_prediction(trade)
-        st.session_state["ifrs13_level"] = model_pred
-        st.session_state["model_pred"] = model_pred
-        st.success("\u2705 ML pipeline executed")
-        st.success(f"Predicted IFRS13 Level: {model_pred}")
+        # Store payload in session for reuse
+        st.session_state["model_payload"] = payload
 
-        st.session_state.ml_done = True
-        #st.rerun()
+        # 🔁 Call endpoint
+        try:
+            endpoint = st.secrets["AZURE_ML_ENDPOINT"]
+            api_key = st.secrets["AZURE_ML_API_KEY"]
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+
+            response = requests.post(endpoint, headers=headers, json=payload)
+            response.raise_for_status()
+            result = response.json()
+
+            st.session_state["model_pred"] = result[0]
+            st.session_state["ifrs13_level"] = result[0]
+            st.session_state["ml_done"] = True
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"🚨 Model call failed: {e}")
+
+    # === Subsections ===
+    if st.session_state.get("ml_done"):
+
+        with st.expander(" Model Input Payload", expanded=False):
+            st.code(json.dumps(st.session_state["model_payload"], indent=2), language="json")
+
+        with st.expander(" Machine Learning Model Details", expanded=False):
+            st.code("""Model: Gradient Boosting (AutoML)
+            Trained on: Synthetic IR Swaption Trades
+            Features: product_type, currency, option_type, notional, strike, expiry_tenor, maturity_tenor
+            Accuracy: 86.2%
+            AUC: 0.74
+            Last Trained: 01-Jun-2025
+
+            This model predicts IFRS13 Level based on risk and trade characteristics.
+            AutoML handled class imbalance and feature engineering.""")
+
+        with st.expander(" Model Inference Result", expanded=False):
+            st.success(f"✅ Predicted IFRS13 Level: {st.session_state['model_pred']}")
+
+    # 🔘 Button below stepper
+    # if st.button("\u25B6 Run Model Inference", key="run_ml"):
+    #     # Update state and rerun to show stepper as completed
+    #     st.session_state["ml_done"] = True
+    #     st.session_state["ifrs13_level"] = call_azure_ml_model(trade)
+    #     st.session_state["model_pred"] = st.session_state["ifrs13_level"]
+    #     st.rerun()  # Rerun needed to reflect state change immediately
+
+    # Show details only if workflow was run
+    # if st.session_state.get("ml_done"):
+    #     st.code(json.dumps(trade, indent=2), language='json')
+    #     st.success("✅ ML Input ready")
+    #     st.info("Features extracted successfully (mock)")
+    #     st.success("✅ ML pipeline executed")
+    #     st.success(f"Predicted IFRS13 Level: {st.session_state['model_pred']}")
+
+
+
 if "model_pred" in st.session_state:
     st.sidebar.markdown(f"""
     <div style='background-color:#d4edda;color:#155724;padding:10px;
@@ -194,30 +312,30 @@ with st.container(border=True):
         with st.expander(" Volatility Observability Test Results", expanded=False):
             st.dataframe(st.session_state["vol_report_df"])
             
-# --- PV and Stress Test Summary Box ---
+    
     # --- PV and Stress Test Summary Box ---
-with st.container():
-    st.markdown("### **Observability Stress Test Summary**")
+    with st.container():
+        st.subheader("Observability Summary")
+        
+        # Validate keys exist
+        required_keys = ["trade_pv", "ir_stress_pv", "vol_stress_pv", "final_level"]
+        if all(k in st.session_state for k in required_keys):
+            trade_pv = st.session_state["trade_pv"]
+            ir_stress_pv = st.session_state["ir_stress_pv"]
+            vol_stress_pv = st.session_state["vol_stress_pv"]
+            total_stress_pv = ir_stress_pv + vol_stress_pv
+            stress_pct = (total_stress_pv / trade_pv) * 100 if trade_pv else 0
 
-    # Validate keys exist
-    required_keys = ["trade_pv", "ir_stress_pv", "vol_stress_pv", "final_level"]
-    if all(k in st.session_state for k in required_keys):
-        trade_pv = st.session_state["trade_pv"]
-        ir_stress_pv = st.session_state["ir_stress_pv"]
-        vol_stress_pv = st.session_state["vol_stress_pv"]
-        total_stress_pv = ir_stress_pv + vol_stress_pv
-        stress_pct = (total_stress_pv / trade_pv) * 100 if trade_pv else 0
+            col1, col2, col3 = st.columns(3)
+            col1.metric(" Trade PV", f"{trade_pv:,.2f}")
+            col2.metric(" Unobservable PV component", f"{total_stress_pv:,.2f}")
+            col3.metric(" Unobservable % of Total PV", f"{stress_pct:.2f}%")
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric(" Trade PV", f"{trade_pv:,.2f}")
-        col2.metric(" Unobservable PV component", f"{total_stress_pv:,.2f}")
-        col3.metric(" Unobservable % of Total PV", f"{stress_pct:.2f}%")
-
-        col2.metric(" IR Stress PV", f"{ir_stress_pv:,.2f}")
-        col2.metric(" Volatility Stress PV", f"{vol_stress_pv:,.2f}")
-        st.metric(" Final IFRS13 Level", st.session_state["final_level"])
-    # else:
-    #     st.warning("⚠️ Observability stress results not available.")
+            col2.metric(" IR Stress PV", f"{ir_stress_pv:,.2f}")
+            col2.metric(" Volatility Stress PV", f"{vol_stress_pv:,.2f}")
+            st.metric(" Final IFRS13 Level", st.session_state["final_level"])
+        # else:
+        #     st.warning("⚠️ Observability stress results not available.")
 
 
     

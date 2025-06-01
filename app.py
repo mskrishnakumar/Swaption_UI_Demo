@@ -33,8 +33,6 @@ ir_grid["Observable Tenor (Years)"] = pd.to_numeric(ir_grid["Observable Tenor (Y
 vol_grid = pd.read_csv("volatility_observability_grid.csv")
 vol_grid.columns = vol_grid.columns.str.strip()
 
-import streamlit as st
-
 # --- Page Config ---
 st.set_page_config(page_title="FAIR&SQ - IFRS13 Fair Value Classification Model", layout="wide")
 

@@ -223,7 +223,7 @@ with st.container(border=True):
             response.raise_for_status()
             result = response.json()
             end_time = time.time()  # End timer
-            elapsed = round(end_time - start_time, 2)  # Time in seconds
+            elapsed = round(end_time - start_time, 4)  # Time in seconds
             st.session_state["model_output"] = result
             st.session_state["model_pred"] = result[0]
             st.session_state["ifrs13_level"] = result[0]
@@ -263,29 +263,10 @@ with st.container(border=True):
                 unsafe_allow_html=True
             )
 
-
-
         with st.expander(" Model Inference Result", expanded=False):
             st.markdown(f"🕒 Model run completed in {st.session_state['ML_Model_elapsed_time']} seconds.")
             st.code(json.dumps(st.session_state["model_output"], indent=2), language="json")
             st.success(f"✅ Predicted IFRS13 Level: {st.session_state['model_pred']}")
-
-    # 🔘 Button below stepper
-    # if st.button("\u25B6 Run Model Inference", key="run_ml"):
-    #     # Update state and rerun to show stepper as completed
-    #     st.session_state["ml_done"] = True
-    #     st.session_state["ifrs13_level"] = call_azure_ml_model(trade)
-    #     st.session_state["model_pred"] = st.session_state["ifrs13_level"]
-    #     st.rerun()  # Rerun needed to reflect state change immediately
-
-    # Show details only if workflow was run
-    # if st.session_state.get("ml_done"):
-    #     st.code(json.dumps(trade, indent=2), language='json')
-    #     st.success("✅ ML Input ready")
-    #     st.info("Features extracted successfully (mock)")
-    #     st.success("✅ ML pipeline executed")
-    #     st.success(f"Predicted IFRS13 Level: {st.session_state['model_pred']}")
-
 
 
 if "model_pred" in st.session_state:
@@ -295,8 +276,6 @@ if "model_pred" in st.session_state:
     font-weight:bold'>Model Predicted IFRS13 Level:<br>{st.session_state['model_pred']}</div>
     """, unsafe_allow_html=True)
 
-# --- Section: Risk Factor-based Inference ---
-# --- Section: Risk Factor-based Inference ---
 # --- Section: Risk Factor-based Inference ---
 with st.container(border=True):
     st.subheader("2. Risk Factor Observability testing")

@@ -163,8 +163,8 @@ def call_azure_ml_model(trade):
         }
     }
 
-    endpoint = st.secrets["AZURE_ML_ENDPOINT"]
-    api_key = st.secrets["AZURE_ML_API_KEY"]
+    endpoint = os.getenv("AZURE_ML_ENDPOINT", st.secrets.get("AZURE_ML_ENDPOINT", ""))
+    api_key =  os.getenv("AZURE_ML_API_KEY", st.secrets.get("AZURE_ML_API_KEY", ""))
 
     headers = {
         "Content-Type": "application/json",

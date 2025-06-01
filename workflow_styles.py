@@ -118,11 +118,13 @@ def get_workflow_html_ml(step):
     <div class="lane">
         <div class="header model">Model Inference</div>
         <div class="horizontal-body">
-            {box("Prepare Input (JSON) to ML Model", 0)}
+            {box("Construct Model Input", 0)}
             <div class="arrow-model">▶</div>
-            {box("Featurization", 1)}
+            {box("Send to Azure Machine Learning Model", 1)}
             <div class="arrow-model">▶</div>
-            {box("Execute Model", 2)}
+            {box("Model Execution", 2)}
+            <div class="arrow-model">▶</div>
+            {box("Observability Level Predicted by Model", 2)}
         </div>
     </div>
     """
@@ -158,11 +160,11 @@ def get_workflow_html_rat(step):
 
     html = f"""
     <div class="lane">
-        <div class="header rationale">Rationale Explanation</div>
+        <div class="header rationale">Ground Model Prediction</div>
         <div class="horizontal-body">
-            {box("Collate Inputs", 0)}
+            {box("Analytical Review", 0)}
             <div class="arrow-rationale">▶</div>
-            {box("Query LLM", 1)}
+            {box("Generate Commentary", 1)}
             <div class="arrow-rationale">▶</div>
             {box("Summarize Insight", 2)}
         </div>

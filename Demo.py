@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import json
+import time
 from datetime import date
 from openai import AzureOpenAI
 from Observability_Stress_Module import (
@@ -31,9 +32,39 @@ ir_grid["Observable Tenor (Years)"] = pd.to_numeric(ir_grid["Observable Tenor (Y
 vol_grid = pd.read_csv("volatility_observability_grid.csv")
 vol_grid.columns = vol_grid.columns.str.strip()
 
+import streamlit as st
+
 # --- Page Config ---
-st.set_page_config(page_title="IFRS13 Classification", layout="wide")
-st.title("IFRS13 Observability Classification")
+st.set_page_config(page_title="F&S - IFRS13 Fair Value Classification Model", layout="wide")
+
+# --- Header Layout ---
+# col1, col2 = st.columns([1, 3])
+
+# with col1:
+#     st.image("fair_value_logo.svg", width=240)
+
+# with col2:
+st.markdown("""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@700&display=swap');
+
+        .title {
+            font-family: 'Roboto Slab', serif;
+            font-size: 40px;
+            color: #007BFF;  /* Bootstrap primary blue */
+            margin-bottom: 0;
+        }
+
+        .subtitle {
+            font-size: 20px;
+            color: gray;
+            margin-top: 5px;
+        }
+        </style>
+
+        <div class="title">IFRS13 Fair Value Classification Model</div>
+        <div class="subtitle">Fair & Square in every decision.</div>
+""", unsafe_allow_html=True)
 
 # --- Workflow CSS ---
 st.markdown(get_workflow_css(), unsafe_allow_html=True)
@@ -45,12 +76,12 @@ notional = st.sidebar.number_input("Notional", min_value=1_000_000, step=1_000_0
 currency = st.sidebar.selectbox("Currency", ["USD", "EUR", "GBP", "JPY"])
 option_type = st.sidebar.selectbox("Option Type", ["Receiver", "Payer"])
 strike = st.sidebar.slider("Strike (%)", 0.0, 10.0, 2.5, 0.1)
-expiry_tenor = st.sidebar.selectbox("Expiry Tenor (Y)", [2, 3, 5])
+expiry_tenor = st.sidebar.selectbox("Expiry Tenor (Y)", [2, 3, 5,10])
 expiry_date = date.today().replace(year=date.today().year + expiry_tenor)
-st.sidebar.markdown(f"\U0001F4C5 **Expiry Date**: {expiry_date.strftime('%d-%b-%Y')}")
+#st.sidebar.markdown(f"Expiry Date: {expiry_date.strftime('%d-%b-%Y')}") # Don't show date in sidebar for now
 maturity_tenor = st.sidebar.selectbox("Maturity Tenor (Y)", [5, 10, 15, 20, 30])
 maturity_date = date.today().replace(year=date.today().year + maturity_tenor)
-st.sidebar.markdown(f"\U0001F4C5 **Maturity Date**: {maturity_date.strftime('%d-%b-%Y')}")
+#st.sidebar.markdown(f"Maturity Date: {maturity_date.strftime('%d-%b-%Y')}") # Don't show date in sidebar for now
 
 # --- Trade Dictionary ---
 trade = {
@@ -146,8 +177,6 @@ def call_azure_ml_model(trade):
     result = response.json()
     return result[0]  # e.g., "Level 3"
 
-
-# --- Section: Machine Learning Model Prediction ---
 # --- Section: Machine Learning Model Prediction ---
 with st.container(border=True):
     st.subheader("1. Machine Learning Model Prediction")
@@ -179,7 +208,8 @@ with st.container(border=True):
 
         # Store payload in session for reuse
         st.session_state["model_payload"] = payload
-
+        with st.spinner("Running model..."):
+            start_time = time.time()  # Start timer
         # 🔁 Call endpoint
         try:
             endpoint = st.secrets["AZURE_ML_ENDPOINT"]
@@ -192,10 +222,13 @@ with st.container(border=True):
             response = requests.post(endpoint, headers=headers, json=payload)
             response.raise_for_status()
             result = response.json()
-
+            end_time = time.time()  # End timer
+            elapsed = round(end_time - start_time, 2)  # Time in seconds
+            st.session_state["model_output"] = result
             st.session_state["model_pred"] = result[0]
             st.session_state["ifrs13_level"] = result[0]
             st.session_state["ml_done"] = True
+            st.session_state["ML_Model_elapsed_time"] = elapsed
             st.rerun()
 
         except Exception as e:
@@ -207,18 +240,34 @@ with st.container(border=True):
         with st.expander(" Model Input Payload", expanded=False):
             st.code(json.dumps(st.session_state["model_payload"], indent=2), language="json")
 
-        with st.expander(" Machine Learning Model Details", expanded=False):
-            st.code("""Model: Gradient Boosting (AutoML)
-            Trained on: Synthetic IR Swaption Trades
-            Features: product_type, currency, option_type, notional, strike, expiry_tenor, maturity_tenor
-            Accuracy: 86.2%
-            AUC: 0.74
-            Last Trained: 01-Jun-2025
+        
+        with st.expander("Machine Learning Model Details", expanded=False):
+            st.markdown(
+                """
+                <div style='font-weight: bold; font-size: 18px; margin-bottom: 10px;'>📘 Machine Learning Model Details</div>
+                <div style='text-align: left; overflow-y: auto; max-height: 250px;
+                            padding: 10px; background-color: #111111;
+                            border-radius: 8px; color: #f0f0f0;
+                            font-family: monospace; font-size: 14px;'>
+                    <strong>Model:</strong> Gradient Boosting (AutoML)<br>
+                    <strong>Version:</strong> Gradient Boosting (AutoML)<br>
+                    <strong>Trained on:</strong> Synthetic IR Swaption Trades<br>
+                    <strong>Features:</strong> product_type, currency, option_type, notional, strike, expiry_tenor, maturity_tenor<br>
+                    <strong>Accuracy:</strong> 86.2%<br>
+                    <strong>AUC:</strong> 0.74<br>
+                    <strong>Last Trained:</strong> 01-Jun-2025<br><br>
+                    This model predicts IFRS13 Level based on risk and trade characteristics.<br>
+                    AutoML handled class imbalance and feature engineering.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-            This model predicts IFRS13 Level based on risk and trade characteristics.
-            AutoML handled class imbalance and feature engineering.""")
+
 
         with st.expander(" Model Inference Result", expanded=False):
+            st.markdown(f"🕒 Model run completed in {st.session_state['ML_Model_elapsed_time']} seconds.")
+            st.code(json.dumps(st.session_state["model_output"], indent=2), language="json")
             st.success(f"✅ Predicted IFRS13 Level: {st.session_state['model_pred']}")
 
     # 🔘 Button below stepper
@@ -299,10 +348,19 @@ with st.container(border=True):
     # ✅ Always show stored greeks and PV breakdown
     if "greeks" in st.session_state and "generated_pvs" in st.session_state:
         with st.expander("Simulated Risk Factors", expanded=False):
-            st.dataframe(pd.DataFrame.from_dict(st.session_state["greeks"], orient="index", columns=["Value"]))
+            df_greeks = pd.DataFrame.from_dict(
+                {k: str(v) for k, v in st.session_state["greeks"].items()},
+                orient="index",
+                columns=["Value"]
+            )
+            st.dataframe(df_greeks)
 
         with st.expander("PV Contribution by Risk Factors", expanded=False):
-            pv_df = pd.DataFrame.from_dict(st.session_state["generated_pvs"], orient="index", columns=["PV"])
+            pv_df = pd.DataFrame.from_dict(
+                {k: str(v) for k, v in st.session_state["generated_pvs"].items()},
+                orient="index",
+                columns=["PV"]
+            )
             st.dataframe(pv_df)
     if "ir_report_df" in st.session_state:
         with st.expander(" IR Delta Observability Test Results", expanded=False):
@@ -314,8 +372,8 @@ with st.container(border=True):
             
     
     # --- PV and Stress Test Summary Box ---
-    with st.container():
-        st.subheader("Observability Summary")
+        with st.container():
+            st.subheader("Observability Summary")
         
         # Validate keys exist
         required_keys = ["trade_pv", "ir_stress_pv", "vol_stress_pv", "final_level"]
@@ -333,10 +391,9 @@ with st.container(border=True):
 
             col2.metric(" IR Stress PV", f"{ir_stress_pv:,.2f}")
             col2.metric(" Volatility Stress PV", f"{vol_stress_pv:,.2f}")
-            st.metric(" Final IFRS13 Level", st.session_state["final_level"])
+            st.metric(" Observability Level", st.session_state["final_level"])
         # else:
-        #     st.warning("⚠️ Observability stress results not available.")
-
+        #     st.warning("Observability stress results not available.")
 
     
 # Update sidebar with both predictions
@@ -349,7 +406,7 @@ if "final_level" in st.session_state:
     """, unsafe_allow_html=True)
 # --- Section: Rationale Explanation ---
 with st.container(border=True):
-    st.subheader("3. Rationale")
+    st.subheader("3. Analytical Review and Rationale Generation")
     step = 3 if st.session_state.get("rat_done") else 0
     st.markdown(get_workflow_html_rat(step), unsafe_allow_html=True)
 

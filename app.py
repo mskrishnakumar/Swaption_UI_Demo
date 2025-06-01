@@ -35,7 +35,7 @@ vol_grid.columns = vol_grid.columns.str.strip()
 import streamlit as st
 
 # --- Page Config ---
-st.set_page_config(page_title="F&S - IFRS13 Fair Value Classification Model", layout="wide")
+st.set_page_config(page_title="FAIR&SQ - IFRS13 Fair Value Classification Model", layout="wide")
 
 # --- Header Layout ---
 # col1, col2 = st.columns([1, 3])

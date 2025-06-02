@@ -124,7 +124,7 @@ def get_workflow_html_ml(step):
             <div class="arrow-model">▶</div>
             {box("Model Execution", 2)}
             <div class="arrow-model">▶</div>
-            {box("Observability Level Predicted by Model", 2)}
+            {box("Fair Value Observability Prediction", 2)}
         </div>
     </div>
     """

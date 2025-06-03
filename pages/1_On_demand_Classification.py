@@ -41,7 +41,7 @@ st.title("🔎 On-Demand IFRS13 Fair Value Classification")
 def get_secret(key, default=""):
     return os.getenv(key, st.secrets.get(key, default))
 
-single_tab, batch_tab, rationale_tab = st.tabs(["🔹 Single Trade Inference", "🔸 Batch Inference", "🧠 Rationale Explanation"])
+single_tab, batch_tab, rationale_tab = st.tabs(["  Single Trade Inference", "  Batch Inference", "  Analytical Review"])
 
 with single_tab:
     st.subheader("🔹 Single Trade Inference")

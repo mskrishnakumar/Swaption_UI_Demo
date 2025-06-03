@@ -34,8 +34,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<div class="big-title">🔍 Welcome to the IFRS13 Fair Value Classification App</div>
-<div class="subtitle">A modular, explainable, and regulatory-friendly classification tool</div>
+<div class="big-title"> Welcome to the IFRS13 Fair Value Classification Appplication</div>
+<div class="subtitle">A modular, explainable, and friendly classification tool - To be raplced tomo</div>
 """, unsafe_allow_html=True)
 
 st.info("Use the navigation on the left sidebar to begin.")

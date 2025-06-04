@@ -2,11 +2,18 @@ import streamlit as st
 import pandas as pd
 import os
 from Observability_Stress_Module import simulate_greeks, generate_trade_pv_and_risk_pvs, ir_delta_stress_test, vol_risk_stress_test
-from workflow_styles import get_workflow_css, get_workflow_html_rf
 
 st.set_page_config(page_title="Risk Factor Testing", layout="wide")
-st.markdown(get_workflow_css(), unsafe_allow_html=True)
-st.title("2️⃣ Risk Factor Observability Testing")
+st.title("Grounding Model Predictions with Risk Factor Observability")
+
+st.markdown("""
+We perform a quantitative overlay on model-predicted fair value classifications by applying **risk factor-based stress testing**.  
+
+It isolates the contribution of each input—such as IR Delta, Vega, Vanna, and Volga—to the trade's present value (PV), and determines the proportion attributable to **unobservable inputs**.  
+
+In accordance with **IFRS 13** Level determination criteria, if the unobservable PV exceeds defined materiality thresholds (e.g., >10%),  
+the model classification is re-leveled to reflect reduced market observability, ensuring alignment with valuation governance and disclosure standards.
+""")
 
 # --- Load secrets from environment variables as fallback ---
 def get_secret(key, default=""):
@@ -33,9 +40,12 @@ trade = {
 }
 st.session_state["trade"] = trade
 
-st.markdown(get_workflow_html_rf(4 if st.session_state.get("rf_done") else 0), unsafe_allow_html=True)
+# --- Show Model Predicted Level if available ---
+model_level = st.session_state.get("model_pred")
+if model_level:
+    st.info(f" Fair value Level Predicted by Model: **{model_level}**")
 
-if st.button("▶ Run Risk Factor Inference"):
+if st.button("Ground with Risk Factor Observability"):
     greeks = simulate_greeks(trade)
     trade["trade_pv"], generated_pvs = generate_trade_pv_and_risk_pvs(greeks)
     greeks.update(generated_pvs)
@@ -43,7 +53,9 @@ if st.button("▶ Run Risk Factor Inference"):
     ir_stressed, ir_report, ir_stress_pv, ir_msgs = ir_delta_stress_test(trade, greeks)
     vol_stressed, vol_report, vol_stress_pv, vol_msgs = vol_risk_stress_test(trade, greeks)
     total_stress_pv = ir_stress_pv + vol_stress_pv
-    final_level = "Level 3" if total_stress_pv > 0.1 * trade["trade_pv"] else "Level 2"
+    rf_level = "Level 3" if total_stress_pv > 0.1 * trade["trade_pv"] else "Level 2"
+
+    final_level = rf_level  # You can later extend this logic if you apply further adjustments
 
     st.session_state.update({
         "greeks": greeks,
@@ -55,23 +67,40 @@ if st.button("▶ Run Risk Factor Inference"):
         "trade_pv": trade["trade_pv"],
         "ir_stress_pv": ir_stress_pv,
         "vol_stress_pv": vol_stress_pv,
+        "rf_level": rf_level,
         "final_level": final_level,
         "rf_done": True
     })
     st.rerun()
 
-# Show results
+# --- Display Results ---
 if st.session_state.get("rf_done"):
-    st.subheader("Greeks and PV Contributions")
+    st.subheader("Classification Summary")
+
+    model_level = st.session_state.get("model_pred", "N/A")
+    rf_level = st.session_state.get("rf_level", "N/A")
+    final_level = st.session_state.get("final_level", "N/A")
+    observability_override = "Yes" if model_level != final_level else "No"
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Model Predicted Level", model_level)
+    col2.metric("Risk Factor Observability Level", rf_level)
+    col3.metric("Final Adjusted Level", final_level)
+
+    st.markdown("---")
+    st.subheader("Risk Factors and PV Contributions")
     st.dataframe(pd.DataFrame.from_dict(st.session_state["greeks"], orient="index", columns=["Value"]))
     st.dataframe(pd.DataFrame.from_dict(st.session_state["generated_pvs"], orient="index", columns=["PV"]))
 
-    st.subheader("IR Delta Observability")
+    st.subheader("📈 IR Delta Observability")
     st.dataframe(st.session_state["ir_report_df"])
 
-    st.subheader("Volatility Observability")
+    st.subheader("📉 Volatility Observability")
     st.dataframe(st.session_state["vol_report_df"])
 
-    st.metric("Total PV", st.session_state["trade_pv"])
-    st.metric("Stress PV", st.session_state["ir_stress_pv"] + st.session_state["vol_stress_pv"])
-    st.success(f"🔍 Final Observability Level: {st.session_state['final_level']}")
+    total_pv = round(st.session_state["trade_pv"], 2)
+    stress_pv = round(st.session_state["ir_stress_pv"] + st.session_state["vol_stress_pv"], 2)
+    st.metric("Total PV", total_pv)
+    st.metric("Stressed PV", stress_pv)
+
+    st.success(f"🔍 Final Observability Level: {final_level}")
